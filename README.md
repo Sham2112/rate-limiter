@@ -1,2 +1,2 @@
 # rate-limiter
-Spring only rate limiter project practice rate limiting algorithms
+Spring only rate limiter project to practice rate limiting algorithms
