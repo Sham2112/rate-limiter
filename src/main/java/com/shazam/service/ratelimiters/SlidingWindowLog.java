@@ -50,6 +50,10 @@ public class SlidingWindowLog implements RateLimiter {
         //do nothing
     }
 
+    public void stopScheduler(){
+        //do nothing as TokenBucket doesn't require a scheduler
+    }
+
     /*
         discards requests from the queue if their timestamp is before the interval
     */

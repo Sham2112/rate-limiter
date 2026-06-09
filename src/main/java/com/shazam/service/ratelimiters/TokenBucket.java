@@ -62,6 +62,10 @@ public class TokenBucket implements RateLimiter {
         //do nothing as TokenBucket doesn't require a scheduler
     }
 
+    public void stopScheduler(){
+        //do nothing as TokenBucket doesn't require a scheduler
+    }
+
     /**
     * @return true if there are tokens left in the bucket and reduce by 1. Return false otherwise
     */

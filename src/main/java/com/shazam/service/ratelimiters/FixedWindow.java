@@ -59,7 +59,7 @@ public class FixedWindow implements RateLimiter {
         scheduler.scheduleAtFixedRate(this::resetCounter, interval, interval, TimeUnit.MILLISECONDS);
     }
 
-    public void stop(){
+    public void stopScheduler(){
         if (scheduler != null){
             scheduler.shutdown();
         }

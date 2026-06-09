@@ -3,11 +3,19 @@ package com.shazam.interceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.stereotype.Component;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.stereotype.Component;
+import java.util.concurrent.TimeUnit;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalCause;
+import com.github.benmanes.caffeine.cache.Scheduler;
 
 import com.shazam.service.ratelimiters.TokenBucket;
 import com.shazam.service.ratelimiters.FixedWindow;
@@ -15,13 +23,23 @@ import com.shazam.service.ratelimiters.LeakingBucket;
 import com.shazam.service.ratelimiters.RateLimiter;
 import com.shazam.service.ratelimiters.SlidingWindowCounter;
 import com.shazam.service.ratelimiters.SlidingWindowLog;
+import com.shazam.model.types.SchedulerTypes;
 import com.shazam.utils.NetworkUtils;
 
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
 
     @Value("${scheduler.type:token_bucket}")
-    public String schedulerType;
+    private SchedulerTypes schedulerType;
+
+    @Value("${cache.size:1000}")
+    private int cacheSize;
+
+    @Value("${cache.expireAfter:10}")
+    private int expireAfter;
+
+    @Value("${scheduler.retryAfter}")
+    private String retryAfter;
 
     @Value("${tokenbucket.bucketSize:100}")
     private long tokenBucketSize;
@@ -58,45 +76,68 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     @Value("${slidingWindowLog.noOfRequests:100}")
     private int slidingWindowLogNoOfRequests;
-    
-    // Map<String, TokenBucket> userBucketMap = new ConcurrentHashMap<>();
-    Map<String, RateLimiter> userLimiterMap = new ConcurrentHashMap<>();
+
+    Cache <String, RateLimiter> cache;
 
     @Override
     public boolean preHandle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,@NonNull Object handler) throws Exception{
-        boolean result = false;
         String ipAddress = NetworkUtils.getClientIp(request);
-        if (userLimiterMap.containsKey(ipAddress)){
-            RateLimiter limiter = userLimiterMap.get(ipAddress);
-            result = limiter.handleRequest(request);
-        } else {
-            RateLimiter limiter = createLimiter();
-            if (limiter.hasScheduler()){
-                limiter.startScheduler();
+        
+        RateLimiter limiter = cache.get(ipAddress, i -> {
+            System.out.println("[Cache] creating limiter for ip=" + i);
+            RateLimiter l = createLimiter();
+            if (l.hasScheduler()){
+                l.startScheduler();
             }
-            userLimiterMap.put(ipAddress, limiter);
-            result = limiter.handleRequest(request);
-        }
+            return l;
+        });
+
+        boolean result = limiter.handleRequest(request);
         if (!result) {
             response.setStatus(429);
+            response.setHeader("Retry-After", retryAfter);
         }
         return result;
     }
 
-    public RateLimiter createLimiter() throws IllegalArgumentException{
+    private RateLimiter createLimiter() throws IllegalArgumentException{
         switch (schedulerType) {
-            case "fixed_window":
+            case SchedulerTypes.fixed_window:
                 return new FixedWindow(fixedWindowInterval, fixedWindowNoOfRequests);
-            case "token_bucket":
+            case SchedulerTypes.token_bucket:
                 return new TokenBucket(tokenBucketSize, tokenBucketInterval, tokenBucketRefillSize);
-            case "leaking_bucket":
+            case SchedulerTypes.leaking_bucket:
                 return new LeakingBucket(leakingBucketQueueSize, leakingBucketInterval, leakingBucketNoOfRequests);
-            case "sliding_window_counter":
+            case SchedulerTypes.sliding_window_counter:
                 return new SlidingWindowCounter(slidingWindowCounterInterval, slidingWindowCounterNoOfRequests);
-            case "sliding_window_log":
+            case SchedulerTypes.sliding_window_log:
                 return new SlidingWindowLog(slidingWindowLogInterval, slidingWindowLogNoOfRequests);
             default:
                 throw new IllegalArgumentException("valid scheduler type not provided");
+        }
+    }
+
+    @PostConstruct
+    private void createCache(){
+        this.cache = Caffeine.newBuilder()
+            .expireAfterAccess(expireAfter, TimeUnit.MINUTES)
+            .scheduler(Scheduler.systemScheduler()) 
+            .evictionListener((String ip, RateLimiter limiter, RemovalCause cause) -> {
+                System.out.println("[Cache] evicting limiter for ip=" + ip + " cause=" + cause);
+                if (limiter != null ) limiter.stopScheduler();
+            })
+            .maximumSize(cacheSize)
+            .build();
+    }
+    
+
+    @PreDestroy
+    private void cleanup() {
+        System.out.println("Spring is stopping! Shutting down rate limiter schedulers...");
+
+        for (Map.Entry<String, RateLimiter> entry : cache.asMap().entrySet()) {
+            RateLimiter limiter = entry.getValue();
+            limiter.stopScheduler(); // no-op for limiters without a scheduler
         }
     }
 }

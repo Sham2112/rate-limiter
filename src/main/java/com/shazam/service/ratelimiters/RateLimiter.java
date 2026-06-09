@@ -11,4 +11,5 @@ public interface RateLimiter {
 
     public void startScheduler();
 
+    public void stopScheduler();
 }

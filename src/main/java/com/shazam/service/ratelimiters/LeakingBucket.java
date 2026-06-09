@@ -77,7 +77,7 @@ public class LeakingBucket implements RateLimiter {
     /**
      * Stops the scheduler
      */
-    public void stop(){
+    public void stopScheduler(){
         if (scheduler != null){
             scheduler.shutdown();
         }
