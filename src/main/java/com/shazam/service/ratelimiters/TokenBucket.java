@@ -7,7 +7,7 @@ Token Bucket algo implementaion for rate limiting\
 Tokens are added at a fixed rate (ex: x tokens ever y nanoseconds) to the bucket
 For every request check if there are tokens left in bucket and only allow requests if there is
 */
-public class TokenBucket {
+public class TokenBucket implements RateLimiter {
     private long bucketSize;
     private long interval;
     private long tokensLeft;
@@ -52,6 +52,14 @@ public class TokenBucket {
 
     public void forwardRequest(HttpServletRequest request){
         //TODO: add logic to forward requests
+    }
+
+    public boolean hasScheduler(){
+        return false;
+    }
+
+    public void startScheduler(){
+        //do nothing as TokenBucket doesn't require a scheduler
     }
 
     /**

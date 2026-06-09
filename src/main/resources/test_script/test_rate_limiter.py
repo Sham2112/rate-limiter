@@ -5,10 +5,10 @@ import time
 BASE_URL = "http://localhost:8080"
 ENDPOINT = "/api/info"
 
-# Must match application.properties
-BUCKET_SIZE = 10
-REFILL_INTERVAL_MS = 2000
-REFILL_SIZE = 2
+# Must match application.properties (Leaking Bucket rate limiter)
+LIMIT = 10          # leakingBucket.queueSize  — bucket capacity = burst allowed before rejecting
+LEAK_SIZE = 5       # leakingBucket.noOfRequests — slots freed each interval
+INTERVAL_MS = 2000  # leakingBucket.interval     — how often the bucket leaks
 
 
 def send_request(n):
@@ -23,9 +23,9 @@ def send_request(n):
 
 
 def test_rate_limiting():
-    total = BUCKET_SIZE + 10
+    total = LIMIT + 10
     print(f"Sending {total} requests to {BASE_URL}{ENDPOINT}")
-    print(f"Expect first {BUCKET_SIZE} to return 200, remainder to return 429\n")
+    print(f"Expect first {LIMIT} to return 200 (bucket fills), remainder to return 429\n")
 
     results = {200: 0, 429: 0, "other": 0}
     first_429 = None
@@ -52,7 +52,7 @@ def test_rate_limiting():
     print()
 
     if first_429 is not None:
-        print(f"First 429 at request #{first_429} (expected ~{BUCKET_SIZE + 1})")
+        print(f"First 429 at request #{first_429} (expected ~{LIMIT + 1})")
     else:
         print("No 429s received — rate limiter is NOT triggering")
 
@@ -64,24 +64,31 @@ def test_rate_limiting():
         return False
 
 
-def test_refill():
-    """After exhausting the bucket, wait one refill interval and verify some requests go through again."""
-    wait_s = (REFILL_INTERVAL_MS / 1000) + 0.5  # one interval plus a small margin
-    print(f"\n--- Refill test: waiting {wait_s}s for ~{REFILL_SIZE} tokens to replenish ---")
+def test_leak_recovery():
+    """After the bucket is full, wait one leak interval and verify capacity comes back.
+
+    Unlike a fixed window (whole allowance resets at once), a leaking bucket frees only
+    noOfRequests slots per interval. After one interval ~LEAK_SIZE slots open up, so a
+    follow-up burst of LEAK_SIZE requests should be admitted again.
+    """
+    wait_s = (INTERVAL_MS / 1000) + 0.5  # one leak interval plus a small margin
+    print(f"\n--- Leak recovery test: waiting {wait_s}s for the bucket to leak ~{LEAK_SIZE} slots ---")
     time.sleep(wait_s)
 
     passed = 0
-    for i in range(1, 6):
+    for i in range(1, LEAK_SIZE + 1):
         if send_request(i) == 200:
             passed += 1
 
-    if passed > 0:
-        print(f"PASS: {passed}/5 requests allowed after refill (expected ~{REFILL_SIZE})")
+    if passed == LEAK_SIZE:
+        print(f"PASS: all {passed}/{LEAK_SIZE} requests admitted after the bucket leaked")
+    elif passed > 0:
+        print(f"PARTIAL: {passed}/{LEAK_SIZE} admitted (fewer slots leaked than expected)")
     else:
-        print("FAIL: No requests allowed after refill wait")
+        print("FAIL: no requests admitted after waiting — did the leak scheduler start?")
 
 
 if __name__ == "__main__":
-    print("=== Rate Limiter Test ===\n")
+    print("=== Rate Limiter Test (Leaking Bucket) ===\n")
     if test_rate_limiting():
-        test_refill()
+        test_leak_recovery()

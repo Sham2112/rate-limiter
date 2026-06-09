@@ -1,9 +1,10 @@
 package com.shazam.service.ratelimiters;
 
-import com.shazam.model.Request;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 public class SlidingWindowCounter implements RateLimiter {
     
@@ -28,7 +29,7 @@ public class SlidingWindowCounter implements RateLimiter {
         this.currCounter = 0;
     }
 
-    public synchronized boolean handleRequest(Request request){
+    public synchronized boolean handleRequest(HttpServletRequest request){
         double elapsed = (System.currentTimeMillis() - windowStart) / (double) interval;
         double weight = Math.max(1.0 - elapsed, 0.0);
         double estimate = (prevCounter * weight) + currCounter;
@@ -64,7 +65,11 @@ public class SlidingWindowCounter implements RateLimiter {
         }
     }
 
-    private void forwardRequest(Request request){
+    public boolean hasScheduler(){
+        return true;
+    }
+
+    private void forwardRequest(HttpServletRequest request){
         //Logic to forward requests
     }
 

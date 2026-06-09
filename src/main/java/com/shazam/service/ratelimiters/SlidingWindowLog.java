@@ -1,14 +1,15 @@
 package com.shazam.service.ratelimiters;
 
-import com.shazam.model.Request;
 import java.time.Instant;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingDeque;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 public class SlidingWindowLog implements RateLimiter {
     
     private long interval;
-    private Queue<Request> requestQueue;
+    private Queue<Instant> requestQueue;
 
     /**
      * @param interval window length in milliseconds
@@ -23,7 +24,7 @@ public class SlidingWindowLog implements RateLimiter {
     }
 
     // forwards requests
-    private void forwardRequest(Request request){
+    private void forwardRequest(HttpServletRequest request){
         //logic to forward reqeusts
     }
 
@@ -31,13 +32,22 @@ public class SlidingWindowLog implements RateLimiter {
      * @param request - request to either allow through or reject
      * @return true if no of requests received in the last interval milliseconds is less than noOfRequests, false otherwise
      */
-    public synchronized boolean handleRequest(Request request){
+    public synchronized boolean handleRequest(HttpServletRequest request){
         discardOldRequests();
-        if (requestQueue.offer(request)){
+        Instant now = Instant.now();
+        if (requestQueue.offer(now)){
             forwardRequest(request);
             return true;
         }
         return false;
+    }
+
+    public boolean hasScheduler(){
+        return false;
+    }
+
+    public void startScheduler(){
+        //do nothing
     }
 
     /*
@@ -46,8 +56,8 @@ public class SlidingWindowLog implements RateLimiter {
     private void discardOldRequests(){
         Instant windowStart = Instant.now().minusMillis(interval);
         while(true){
-            Request request = requestQueue.peek();
-            if (request == null || request.time.isAfter(windowStart)){
+            Instant requestTime = requestQueue.peek();
+            if (requestTime == null || requestTime.isAfter(windowStart)){
                 break;
             }
             requestQueue.poll();

@@ -1,28 +1,32 @@
 package com.shazam.service.ratelimiters;
 
-import com.shazam.model.Request;
 import java.util.Queue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import jakarta.servlet.http.HttpServletRequest;
 
 /*
-Leaking Bucket algo implementaion for rate limiting
-Requests are added to a queue and at a fixed interval a certain number of requests are sent to the server
+Leaking Bucket algo implementaion for rate limiting (meter / admission-control model).
+
+Each admitted request raises the bucket's fill level (offer into the queue). A scheduled
+"leak" drains noOfRequests entries every interval, freeing that much capacity. If a request
+arrives when the bucket is full it is rejected. The request itself is served immediately by
+the normal request pipeline — the queue is only the accounting that decides admission, not a
+buffer of work to replay later.
 */
 public class LeakingBucket implements RateLimiter {
 
-    private Queue<Request> requestQueue;
-    // private long queueSize;
+    private Queue<HttpServletRequest> requestQueue;
     private long interval;
     private long noOfRequests;
     private ScheduledExecutorService scheduler;
 
     /**
      * @param queueSize the size of the queue
-     * @param interval interval after which noOfRequests are sent to the server (in milliseconds)
-     * @param noOfRequests no of requests to send to the server
+     * @param interval interval after which noOfRequests are freed from the queue
+     * @param noOfRequests no of requests to free up in the queue
      * @throws IllegalArgumentException if any of the input params is less than or equal to 0 
      */
     public LeakingBucket(int queueSize, int interval, int noOfRequests){
@@ -39,27 +43,26 @@ public class LeakingBucket implements RateLimiter {
      * @param request request received from client
      * @return true if request was added to the queue, false if queue was already full
      */
-    public boolean handleRequest(Request request){
+    public boolean handleRequest(HttpServletRequest request){
         return requestQueue.offer(request);
     }
 
-    /**
-     * sends noOfRequests requests to the server
-     * should be called at the every interval
-     */
-    public void sendRequests(){
+    // Frees up requests to be added to the queue
+    public void leak(){
         long n = noOfRequests;
-        while (n>0 && requestQueue.size()>0){ 
-            Request request = requestQueue.poll();
+        while (n > 0 && requestQueue.poll() != null){
             n--;
-            //TODO: add logic to forward request
         }
     }
 
+    public boolean hasScheduler(){
+        return true;
+    }
+
     /**
-     * Creates a scheduler that calls sendReqeust() at a fixed interval
+     * Creates a scheduler that calls leak() at a fixed interval
      */
-    public void startRequestsScheduler(){
+    public void startScheduler(){
         if (scheduler != null){
             throw new IllegalStateException("Scheduler has already started");
         }
@@ -68,7 +71,7 @@ public class LeakingBucket implements RateLimiter {
             t.setDaemon(true);
             return t;
         });
-        scheduler.scheduleAtFixedRate(this::sendRequests, 0, interval, TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(this::leak, interval, interval, TimeUnit.MILLISECONDS);
     }
 
     /**

@@ -1,9 +1,12 @@
 package com.shazam.service.ratelimiters;
 
-import com.shazam.model.Request;
+// import com.shazam.model.Request;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.util.concurrent.Executors;
 
 public class FixedWindow implements RateLimiter {
@@ -25,19 +28,23 @@ public class FixedWindow implements RateLimiter {
         this.counter.set(0);
     }
 
-    public boolean handleRequest(Request request){
+    public boolean handleRequest(HttpServletRequest request){
         int current;
         do {
             current = counter.get();
             if (current >= noOfRequests) return false;
         } while (!counter.compareAndSet(current, current+1));
-        forwardRequest(request);
+        // forwardRequest(request);
         return true;
     }
 
 
-    private void forwardRequest(Request request){
+    private void forwardRequest(HttpServletRequest request){
         //LOGIC TO FORWARD REQUESTS
+    }
+
+    public boolean hasScheduler(){
+        return true;
     }
 
     public void startScheduler(){
