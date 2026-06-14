@@ -1,0 +1,17 @@
+routes:
+  - id: search-api
+    upstream: https://backend-a.internal:8443
+    paths: ["/search/**"]
+    methods: ["GET"]
+    limiter:
+      type: token_bucket
+      bucketSize: 50
+      interval: 1000
+      refillSize: 50
+  - id: checkout-api
+    upstream: https://backend-b.internal:9000
+    paths: ["/checkout", "/cart/**"]
+    limiter:
+      type: fixed_window
+      noOfRequests: 10
+      interval: 1000

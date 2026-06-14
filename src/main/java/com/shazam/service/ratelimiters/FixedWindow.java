@@ -1,12 +1,9 @@
 package com.shazam.service.ratelimiters;
 
-// import com.shazam.model.Request;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import jakarta.servlet.http.HttpServletRequest;
-
 import java.util.concurrent.Executors;
 
 public class FixedWindow implements RateLimiter {

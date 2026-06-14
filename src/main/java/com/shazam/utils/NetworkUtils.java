@@ -1,8 +1,16 @@
 package com.shazam.utils;
 
+import com.shazam.model.Route;
+import com.shazam.model.RouteConfigs;
+import java.util.List;
+
+import org.springframework.http.server.PathContainer;
+import org.springframework.web.util.pattern.PathPatternParser;
 import jakarta.servlet.http.HttpServletRequest;
 
 public class NetworkUtils {
+
+    private static final PathPatternParser parser = new PathPatternParser();
 
     private static final String[] PROXY_HEADERS = {
         "X-Forwarded-For",
@@ -25,5 +33,18 @@ public class NetworkUtils {
             }
         }
         return request.getRemoteAddr();
+    }
+
+    public static Route selectRoute(HttpServletRequest request, RouteConfigs routeConfigs){
+        String requestURI = request.getRequestURI();
+        for(Route route: routeConfigs.getRoutes()){
+            List<String> paths = route.getPaths();
+            for(String path: paths){
+                if (parser.parse(path).matches(PathContainer.parsePath(requestURI))){
+                    return route;
+                }
+            }
+        }
+        return null;
     }
 }
