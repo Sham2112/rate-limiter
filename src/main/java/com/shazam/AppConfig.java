@@ -3,6 +3,7 @@ package com.shazam;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.lang.NonNull;
@@ -23,6 +24,7 @@ import com.shazam.model.RouteConfigs;
 @EnableWebMvc
 @ComponentScan(basePackages = "com.shazam")
 @PropertySource("classpath:application.properties")
+@EnableAspectJAutoProxy
 public class AppConfig implements WebMvcConfigurer {
 
     @Autowired

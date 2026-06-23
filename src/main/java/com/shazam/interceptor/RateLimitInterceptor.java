@@ -11,8 +11,10 @@ import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Map;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -46,20 +48,26 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     @Autowired
     private RouteConfigs routeConfigs;
 
+    private static final Logger log = LoggerFactory.getLogger(RateLimitInterceptor.class);
+
     Cache <String, RateLimiter> cache;
 
     @Override
     public boolean preHandle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,@NonNull Object handler) throws Exception{
+        String ipAddress = NetworkUtils.getClientIp(request);
         Route route = NetworkUtils.selectRoute(request, routeConfigs);
         if (route == null){
+            log.info("blocked status=404 reason=no-route method={} path={} client={}",
+                    request.getMethod(), request.getRequestURI(), ipAddress);
             response.setStatus(404);
             return false;
         }
-        String ipAddress = NetworkUtils.getClientIp(request);
+        // Stash the matched route so the LoggingAspect can report it for forwarded requests.
+        request.setAttribute("routeId", route.getId());
         String key = ipAddress + "|" + route.getId();
 
         RateLimiter limiter = cache.get(key, i -> {
-            System.out.println("[Cache] creating limiter for ip=" + i);
+            log.debug("cache creating limiter key={}", i);
             RateLimiter l = createLimiter(route.getLimiter());
             if (l.hasScheduler()){
                 l.startScheduler();
@@ -69,6 +77,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
         boolean result = limiter.handleRequest(request);
         if (!result) {
+            log.info("blocked status=429 reason=rate-limited route={} method={} path={} client={}",
+                    route.getId(), request.getMethod(), request.getRequestURI(), ipAddress);
             response.setStatus(429);
             response.setHeader("Retry-After", retryAfter);
         }
@@ -101,8 +111,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         this.cache = Caffeine.newBuilder()
             .expireAfterAccess(expireAfter, TimeUnit.MINUTES)
             .scheduler(Scheduler.systemScheduler()) 
-            .evictionListener((String ip, RateLimiter limiter, RemovalCause cause) -> {
-                System.out.println("[Cache] evicting limiter for ip=" + ip + " cause=" + cause);
+            .evictionListener((String key, RateLimiter limiter, RemovalCause cause) -> {
+                log.debug("cache evicting limiter key={} cause={}", key, cause);
                 if (limiter != null ) limiter.stopScheduler();
             })
             .maximumSize(cacheSize)
@@ -112,7 +122,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     @PreDestroy
     private void cleanup() {
-        System.out.println("Spring is stopping! Shutting down rate limiter schedulers...");
+        log.info("Shutting down rate limiter schedulers...");
 
         for (Map.Entry<String, RateLimiter> entry : cache.asMap().entrySet()) {
             RateLimiter limiter = entry.getValue();
