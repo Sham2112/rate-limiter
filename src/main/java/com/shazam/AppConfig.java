@@ -20,6 +20,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.shazam.interceptor.RateLimitInterceptor;
 import com.shazam.model.RouteConfigs;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
 @Configuration
 @EnableWebMvc
 @ComponentScan(basePackages = "com.shazam")
@@ -45,9 +48,15 @@ public class AppConfig implements WebMvcConfigurer {
         }
     }
 
+    @Bean
+    public MeterRegistry meterRegistry() {
+        return new SimpleMeterRegistry();
+    }
+
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
         registry.addInterceptor(rateLimitInterceptorBean)
-                .addPathPatterns("/**");
+                .addPathPatterns("/**")
+                .excludePathPatterns("/gateway/**");
     }
 }
