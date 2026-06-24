@@ -92,6 +92,17 @@
             <artifactId>micrometer-core</artifactId>
             <version>1.13.6</version>
         </dependency>
+        <!-- redis (distributed rate-limit state) -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-redis</artifactId>
+            <version>3.3.5</version>
+        </dependency>
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>6.3.2.RELEASE</version>
+        </dependency>
     </dependencies>
 
     <build>
